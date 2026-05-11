@@ -39,7 +39,14 @@ ${sourceCode}
 		body: JSON.stringify({
 			model: "qwen2.5-coder:7b",
 			prompt,
-			stream: true
+			stream: true,
+
+			options: {
+				temperature: 0,
+				top_p: 1,
+				top_k: 1,
+				seed: 1
+			}
 		})
 	});
 
