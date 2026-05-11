@@ -3,8 +3,6 @@ import { VerificationResult } from './checker';
 
 type ResultKind =
 	| 'file'
-	| 'criticalGroup'
-	| 'warningGroup'
 	| 'critical'
 	| 'warning'
 	| 'success';
@@ -13,14 +11,9 @@ class ResultItem extends vscode.TreeItem {
 	constructor(
 		public readonly label: string,
 		public readonly kind: ResultKind,
-		public readonly children: ResultItem[] = []
+		public readonly result?: VerificationResult
 	) {
-		super(
-			label,
-			children.length > 0
-				? vscode.TreeItemCollapsibleState.Expanded
-				: vscode.TreeItemCollapsibleState.None
-		);
+		super(label, vscode.TreeItemCollapsibleState.None);
 
 		if (kind === 'critical') {
 			this.iconPath = new vscode.ThemeIcon('error');
@@ -30,18 +23,25 @@ class ResultItem extends vscode.TreeItem {
 			this.iconPath = new vscode.ThemeIcon('warning');
 		}
 
-		if (kind === 'file') {
-			this.iconPath = new vscode.ThemeIcon('file');
-		}
-
 		if (kind === 'success') {
 			this.iconPath = new vscode.ThemeIcon('check');
+		}
+
+		if (kind === 'file') {
+			this.iconPath = new vscode.ThemeIcon('file');
+
+			this.command = {
+				command: 'fpga-ai-verification-tool.openReport',
+				title: 'Open Report',
+				arguments: [result]
+			};
 		}
 	}
 }
 
 export class VerificationProvider implements vscode.TreeDataProvider<ResultItem> {
 	private _onDidChangeTreeData = new vscode.EventEmitter<ResultItem | undefined | void>();
+
 	readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
 	private rootItems: ResultItem[] = [];
@@ -51,50 +51,37 @@ export class VerificationProvider implements vscode.TreeDataProvider<ResultItem>
 	}
 
 	updateResults(results: VerificationResult[]) {
-		this.rootItems = results.map(result => {
-			const fileName = result.fileName.split(/[\\/]/).pop() || result.fileName;
+		this.rootItems = [];
 
-			const children: ResultItem[] = [];
+		for (const result of results) {
+			const fileName =
+				result.fileName.split(/[\\/]/).pop() || result.fileName;
 
-			if (result.criticalErrors.length > 0) {
-				children.push(
-					new ResultItem(
-						`Critical Errors: ${result.criticalErrors.length}`,
-						'criticalGroup',
-						result.criticalErrors.map(error =>
-							new ResultItem(error, 'critical')
-						)
-					)
-				);
+			const criticalCount = result.criticalErrors.length;
+			const warningCount = result.warnings.length;
+
+			let suffix = '';
+
+			if (criticalCount > 0) {
+				suffix += ` ❌${criticalCount}`;
 			}
 
-			if (result.warnings.length > 0) {
-				children.push(
-					new ResultItem(
-						`Warnings: ${result.warnings.length}`,
-						'warningGroup',
-						result.warnings.map(warning =>
-							new ResultItem(warning, 'warning')
-						)
-					)
-				);
+			if (warningCount > 0) {
+				suffix += ` ⚠${warningCount}`;
 			}
 
-			if (children.length === 0) {
-				children.push(
-					new ResultItem(
-						"No issues found.",
-						'success'
-					)
-				);
+			if (criticalCount === 0 && warningCount === 0) {
+				suffix = ' ✅';
 			}
 
-			return new ResultItem(
-				fileName,
-				'file',
-				children
+			this.rootItems.push(
+				new ResultItem(
+					`${fileName}${suffix}`,
+					'file',
+					result
+				)
 			);
-		});
+		}
 
 		this.refresh();
 	}
@@ -105,7 +92,7 @@ export class VerificationProvider implements vscode.TreeDataProvider<ResultItem>
 
 	getChildren(element?: ResultItem): Thenable<ResultItem[]> {
 		if (element) {
-			return Promise.resolve(element.children);
+			return Promise.resolve([]);
 		}
 
 		return Promise.resolve(this.rootItems);
