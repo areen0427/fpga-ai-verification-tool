@@ -279,7 +279,32 @@ function getReportWebview(result: VerificationResult): string {
 				align-items: center;
 				justify-content: space-between;
 				gap: 16px;
-				margin-bottom: 14px;
+				margin-bottom: 8px;
+			}
+
+			.top-actions {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+			}
+
+			.clear-btn {
+				height: 38px;
+				padding: 0 14px;
+				border-radius: 10px;
+				background: #3a1f1f;
+				color: #ff5c5c;
+				border: 1px solid rgba(255, 92, 92, 0.45);
+				font-size: 13px;
+				font-weight: 700;
+				line-height: 1;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+
+			.clear-btn:hover {
+				background: #552525;
 			}
 
 			h2 {
@@ -374,32 +399,51 @@ function getReportWebview(result: VerificationResult): string {
 				</div>
 			</div>
 
-			<div class="card">
-				<div class="card-header">
-					<div>
-						<h2>Testbench Generator</h2>
-						<p>Generate a starter testbench preview before adding it to your project.</p>
-					</div>
+		<div class="card">
+	<div class="card-header">
+		<div>
+			<h2>Testbench Generator</h2>
+		</div>
 
-					<button id="generateBtn" onclick="generateTestbench()">
-						Generate Testbench
-					</button>
-				</div>
+		<div class="top-actions">
+			<button id="generateBtn" onclick="generateTestbench()">
+				Generate Testbench
+			</button>
 
-				<pre id="tbPreview" class="preview">Click "Generate Testbench" to preview output.</pre>
+			<button
+				id="addTbBtnTop"
+				class="secondary-btn"
+				style="display:none;"
+				onclick="addToProject()"
+			>
+				Add to Project
+			</button>
 
-				<div class="actions">
-					<button
-						id="addTbBtn"
-						style="display:none;"
-						onclick="addToProject()"
-					>
-						Add to Project
-					</button>
-				</div>
-			</div>
+			<button
+				id="clearTbBtn"
+				class="clear-btn"
+				title="Clear testbench"
+				onclick="clearTestbench()"
+			>
+				Clear
+			</button>
+		</div>
+	</div>
 
-			<div class="card">
+	<pre id="tbPreview" class="preview">Click "Generate Testbench" to preview output.</pre>
+
+	<div class="actions">
+		<button
+			id="addTbBtnBottom"
+			style="display:none;"
+			onclick="addToProject()"
+		>
+			Add to Project
+		</button>
+	</div>
+</div>	
+
+		<div class="card">
 				<h2>Critical Errors</h2>
 				<ul class="section-list critical-list">
 					${criticalHTML}
@@ -414,53 +458,118 @@ function getReportWebview(result: VerificationResult): string {
 			</div>
 		</div>
 
-		<script>
+	<script>
+	const vscode = acquireVsCodeApi();
 
-			const vscode = acquireVsCodeApi();
+	let generatedTB = "";
+	let isGenerating = false;
+	let isPaused = false;
+	let queuedChunks = "";
+	let ignoreIncoming = false;
 
-			let generatedTB = "";
+	function generateTestbench() {
+		const preview = document.getElementById("tbPreview");
+		const button = document.getElementById("generateBtn");
 
-			async function generateTestbench() {
+		if (isGenerating) {
+			isPaused = !isPaused;
 
-	const preview =
-		document.getElementById("tbPreview");
+			if (isPaused) {
+				button.textContent = "Resume";
+			} else {
+				button.textContent = "Pause";
 
-	const button =
-		document.getElementById("generateBtn");
-
-	button.disabled = true;
-
-	button.textContent = "Generating...";
-
-	preview.textContent =
-		"Generating AI testbench with Ollama...\\n\\nThis may take a few seconds.";
-
-	vscode.postMessage({
-		command: "generateTestbench"
-	});
-}
-
-			function addToProject() {
-				vscode.postMessage({
-					command: "addTestbenchToProject",
-					testbenchText: generatedTB
-				});
+				if (queuedChunks.length > 0) {
+					generatedTB += queuedChunks;
+					queuedChunks = "";
+					preview.textContent = generatedTB;
+				}
 			}
+
+			return;
+		}
+
+		ignoreIncoming = false;
+		isGenerating = true;
+		isPaused = false;
+		generatedTB = "";
+		queuedChunks = "";
+
+		button.textContent = "Pause";
+
+		hideAddButtons();
+
+		preview.textContent =
+			'Generating AI testbench with Ollama...\\n\\nThis may take a few seconds.';
+
+		vscode.postMessage({
+			command: "generateTestbench"
+		});
+	}
+
+	function addToProject() {
+		vscode.postMessage({
+			command: "addTestbenchToProject",
+			testbenchText: generatedTB
+		});
+	}
+
+	function clearTestbench() {
+		generatedTB = "";
+		queuedChunks = "";
+		isGenerating = false;
+		isPaused = false;
+		ignoreIncoming = true;
+
+		document.getElementById("tbPreview").textContent =
+			'Click "Generate Testbench" to preview output.';
+
+		document.getElementById("generateBtn").disabled = false;
+		document.getElementById("generateBtn").textContent =
+			"Generate Testbench";
+
+		hideAddButtons();
+	}
+
+	function showAddButtons() {
+		document.getElementById("addTbBtnTop").style.display =
+			"inline-block";
+
+		document.getElementById("addTbBtnBottom").style.display =
+			"inline-block";
+	}
+
+	function hideAddButtons() {
+		document.getElementById("addTbBtnTop").style.display =
+			"none";
+
+		document.getElementById("addTbBtnBottom").style.display =
+			"none";
+	}
 
 	window.addEventListener("message", event => {
 		const message = event.data;
 
+		if (ignoreIncoming) {
+			return;
+		}
+
 		if (message.command === "startGeneratedTestbench") {
 			generatedTB = "";
+			queuedChunks = "";
 
 			document.getElementById("tbPreview").textContent =
 				"Starting Ollama generation...";
 
-			document.getElementById("addTbBtn").style.display =
-				"none";
+			hideAddButtons();
 		}
 
 		if (message.command === "appendGeneratedTestbench") {
+			if (isPaused) {
+				queuedChunks += message.chunk;
+				return;
+			}
+
 			generatedTB += message.chunk;
 
 			document.getElementById("tbPreview").textContent =
@@ -475,17 +584,19 @@ function getReportWebview(result: VerificationResult): string {
 		}
 
 		if (message.command === "finishGeneratedTestbench") {
-			document.getElementById("generateBtn").disabled = false;
+			isGenerating = false;
+			isPaused = false;
+			queuedChunks = "";
 
+			document.getElementById("generateBtn").disabled = false;
 			document.getElementById("generateBtn").textContent =
 				"Generate Testbench";
 
-			document.getElementById("addTbBtn").style.display =
-				"inline-block";
+			showAddButtons();
 		}
 	});
+</script>
 
-		</script>
 	</body>
 	</html>
 	`;
