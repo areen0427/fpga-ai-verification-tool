@@ -3,6 +3,7 @@ import { VerificationProvider } from './VerificationProvider';
 import { isHDLFile, runChecks } from './checker';
 import { findHDLFiles } from './utils/fileScanner';
 import { VerificationResult } from './checker';
+import { generateDummyTestbench } from "./gentb";
 
 export function activate(context: vscode.ExtensionContext) {
 	const verificationProvider = new VerificationProvider();
@@ -96,7 +97,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const openReportCommand = vscode.commands.registerCommand(
 	'fpga-ai-verification-tool.openReport',
-	(result: VerificationResult) => {
+	async (result: VerificationResult) => {
 		const panel = vscode.window.createWebviewPanel(
 			'fpgaReport',
 			`${result.fileName.split(/[\\/]/).pop()} Report`,
@@ -107,6 +108,47 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 
 		panel.webview.html = getReportWebview(result);
+
+		panel.webview.onDidReceiveMessage(async (message) => {
+			switch (message.command) {
+				case "generateTestbench": {
+					const testbenchText =
+						await generateDummyTestbench(result.fileName);
+
+					panel.webview.postMessage({
+						command: "showGeneratedTestbench",
+						testbenchText
+					});
+
+					break;
+				}
+
+				case "addTestbenchToProject": {
+					const tbPath = result.fileName.replace(
+						/\.(v|sv)$/,
+						"_tb.v"
+					);
+
+					const tbUri = vscode.Uri.file(tbPath);
+
+					await vscode.workspace.fs.writeFile(
+						tbUri,
+						Buffer.from(message.testbenchText, "utf8")
+					);
+
+					const doc =
+						await vscode.workspace.openTextDocument(tbUri);
+
+					await vscode.window.showTextDocument(doc);
+
+					vscode.window.showInformationMessage(
+						"Testbench added to project."
+					);
+
+					break;
+				}
+			}
+		});
 	}
 );
 
@@ -126,22 +168,16 @@ function getReportWebview(result: VerificationResult): string {
 	const criticalHTML =
 		result.criticalErrors.length > 0
 			? result.criticalErrors
-					.map(
-						error =>
-							`<li class="critical">${error}</li>`
-					)
+					.map(error => `<li>${error}</li>`)
 					.join('')
-			: '<li>No critical errors.</li>';
+			: '<li>No critical errors found.</li>';
 
 	const warningHTML =
 		result.warnings.length > 0
 			? result.warnings
-					.map(
-						warning =>
-							`<li class="warning">${warning}</li>`
-					)
+					.map(warning => `<li>${warning}</li>`)
 					.join('')
-			: '<li>No warnings.</li>';
+			: '<li>No warnings found.</li>';
 
 	return `
 	<!DOCTYPE html>
@@ -150,77 +186,243 @@ function getReportWebview(result: VerificationResult): string {
 		<meta charset="UTF-8">
 
 		<style>
+			* {
+				box-sizing: border-box;
+			}
+
 			body {
-				font-family: sans-serif;
-				padding: 20px;
-				background-color: #1e1e1e;
-				color: white;
+				margin: 0;
+				padding: 28px;
+				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+				background: #181818;
+				color: #f3f3f3;
 			}
 
-			h1 {
-				color: #00ffd0;
+			.page {
+				max-width: 1100px;
+				margin: 0 auto;
 			}
 
-			h2 {
-				margin-top: 30px;
+			.header {
+				margin-bottom: 24px;
 			}
 
-			.card {
-				background: #252526;
-				padding: 16px;
-				border-radius: 10px;
-				margin-bottom: 20px;
-			}
-
-			.warning {
-				color: #ffcc00;
-				margin-bottom: 8px;
-			}
-
-			.critical {
-				color: #ff5555;
-				margin-bottom: 8px;
+			.file-name {
+				font-size: 36px;
+				font-weight: 800;
+				color: #19f5d0;
+				margin-bottom: 12px;
 			}
 
 			.summary {
-				font-size: 18px;
-				margin-bottom: 20px;
+				display: flex;
+				gap: 14px;
+				flex-wrap: wrap;
+			}
+
+			.badge {
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+				padding: 8px 12px;
+				border-radius: 999px;
+				background: #262626;
+				border: 1px solid #3a3a3a;
+				font-size: 14px;
+				font-weight: 600;
+			}
+
+			.badge.critical {
+				color: #ff5c5c;
+				border-color: rgba(255, 92, 92, 0.35);
+			}
+
+			.badge.warning {
+				color: #ffd84d;
+				border-color: rgba(255, 216, 77, 0.35);
+			}
+
+			.card {
+				background: #222222;
+				border: 1px solid #333333;
+				border-radius: 16px;
+				padding: 22px;
+				margin-bottom: 22px;
+				box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+			}
+
+			.card-header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 16px;
+				margin-bottom: 14px;
+			}
+
+			h2 {
+				margin: 0;
+				font-size: 22px;
+				font-weight: 750;
+			}
+
+			p {
+				margin: 0;
+				color: #bdbdbd;
+				line-height: 1.5;
+			}
+
+			button {
+				border: none;
+				border-radius: 10px;
+				padding: 10px 14px;
+				font-size: 14px;
+				font-weight: 700;
+				cursor: pointer;
+				color: #101010;
+				background: #19f5d0;
+			}
+
+			button:hover {
+				background: #52ffe0;
+			}
+
+			.secondary-btn {
+				background: #333333;
+				color: #f3f3f3;
+				border: 1px solid #444444;
+			}
+
+			.secondary-btn:hover {
+				background: #3f3f3f;
+			}
+
+			.preview {
+				margin-top: 16px;
+				background: #111111;
+				border: 1px solid #333333;
+				border-radius: 12px;
+				padding: 16px;
+				min-height: 120px;
+				white-space: pre-wrap;
+				overflow-x: auto;
+				color: #eaeaea;
+				font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+				font-size: 13px;
+				line-height: 1.55;
+			}
+
+			.actions {
+				margin-top: 14px;
+				display: flex;
+				gap: 10px;
+			}
+
+			.section-list {
+				margin: 10px 0 0 0;
+				padding-left: 20px;
+				line-height: 1.6;
+			}
+
+			.critical-list li {
+				color: #ff5c5c;
+				margin-bottom: 8px;
+			}
+
+			.warning-list li {
+				color: #ffd84d;
+				margin-bottom: 8px;
 			}
 		</style>
 	</head>
 
 	<body>
-		<h1>${fileName}</h1>
+		<div class="page">
+			<div class="header">
+				<div class="file-name">${fileName}</div>
 
-		<div class="summary">
-			❌ ${result.criticalErrors.length} Critical Errors
-			&nbsp;&nbsp;&nbsp;
-			⚠ ${result.warnings.length} Warnings
+				<div class="summary">
+					<div class="badge critical">
+						❌ ${result.criticalErrors.length} Critical Errors
+					</div>
+
+					<div class="badge warning">
+						⚠ ${result.warnings.length} Warnings
+					</div>
+				</div>
+			</div>
+
+			<div class="card">
+				<div class="card-header">
+					<div>
+						<h2>Testbench Generator</h2>
+						<p>Generate a starter testbench preview before adding it to your project.</p>
+					</div>
+
+					<button onclick="generateTestbench()">
+						Generate Testbench
+					</button>
+				</div>
+
+				<pre id="tbPreview" class="preview">Click "Generate Testbench" to preview output.</pre>
+
+				<div class="actions">
+					<button
+						id="addTbBtn"
+						style="display:none;"
+						onclick="addToProject()"
+					>
+						Add to Project
+					</button>
+				</div>
+			</div>
+
+			<div class="card">
+				<h2>Critical Errors</h2>
+				<ul class="section-list critical-list">
+					${criticalHTML}
+				</ul>
+			</div>
+
+			<div class="card">
+				<h2>Warnings</h2>
+				<ul class="section-list warning-list">
+					${warningHTML}
+				</ul>
+			</div>
 		</div>
 
-		<div class="card">
-			<h2>Critical Errors</h2>
-			<ul>
-				${criticalHTML}
-			</ul>
-		</div>
+		<script>
+			const vscode = acquireVsCodeApi();
 
-		<div class="card">
-			<h2>Warnings</h2>
-			<ul>
-				${warningHTML}
-			</ul>
-		</div>
+			let generatedTB = "";
 
-		<div class="card">
-			<h2>Future Features</h2>
-			<ul>
-				<li>AI explanations</li>
-				<li>Generate testbench</li>
-				<li>FSM detection</li>
-				<li>Clock domain analysis</li>
-			</ul>
-		</div>
+			function generateTestbench() {
+				vscode.postMessage({
+					command: "generateTestbench"
+				});
+			}
+
+			function addToProject() {
+				vscode.postMessage({
+					command: "addTestbenchToProject",
+					testbenchText: generatedTB
+				});
+			}
+
+			window.addEventListener("message", event => {
+				const message = event.data;
+
+				if (message.command === "showGeneratedTestbench") {
+					generatedTB = message.testbenchText;
+
+					document.getElementById("tbPreview").textContent =
+						generatedTB;
+
+					document.getElementById("addTbBtn").style.display =
+						"inline-block";
+				}
+			});
+		</script>
 	</body>
 	</html>
 	`;
