@@ -20,7 +20,26 @@
         "command": "fpga-ai-verification-tool.analyzeFile",
         "title": "Analyze FPGA File"
       }
-    ]
+    ],
+
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "fpgaVerifier",
+          "title": "FPGA Verifier",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+
+    "views": {
+      "fpgaVerifier": [
+        {
+          "id": "fpgaVerifierResults",
+          "name": "Verification Results"
+        }
+      ]
+    }
   },
 
   "scripts": {

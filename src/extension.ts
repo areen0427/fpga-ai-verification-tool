@@ -1,9 +1,19 @@
 import * as vscode from 'vscode';
+import { VerificationProvider } from './VerificationProvider';
 
 export function activate(context: vscode.ExtensionContext) {
+
+	const verificationProvider = new VerificationProvider();
+
+	vscode.window.registerTreeDataProvider(
+		'fpgaVerifierResults',
+		verificationProvider
+	);
+
 	const disposable = vscode.commands.registerCommand(
 		'fpga-ai-verification-tool.analyzeFile',
 		async () => {
+
 			const editor = vscode.window.activeTextEditor;
 
 			if (!editor) {
@@ -58,99 +68,76 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			if (!text.match(/\binput\b/i) && !text.match(/\boutput\b/i)) {
-				criticalErrors.push("No input/output ports detected. Testbench generation may fail.");
+				criticalErrors.push(
+					"No input/output ports detected. Testbench generation may fail."
+				);
 			}
 
 			// ---------- Warning checks ----------
 
-if (!text.includes("default_nettype none")) {
-	warnings.push("Consider adding `default_nettype none` to catch undeclared wires.");
-}
-
-// Better blocking assignment detection
-const sequentialBlocks =
-	text.match(/always\s*@\s*\([^)]*posedge[^)]*\)[\s\S]*?end/g) || [];
-
-const hasBlockingInSequential = sequentialBlocks.some(block =>
-	/(?<![<>=!])=(?![=>=])/g.test(block)
-);
-
-if (hasBlockingInSequential) {
-	warnings.push(
-		"Possible blocking assignment `=` inside sequential logic. Use `<=` for flip-flops."
-	);
-}
-
-// Missing reset detection
-if (
-	text.match(/always\s*@\s*\(\s*posedge|always_ff\s*@/i) &&
-	!text.match(/reset|rst/i)
-) {
-	warnings.push("Sequential logic found, but no reset signal detected.");
-}
-
-// Case statement without default
-if (
-	text.match(/\bcase\s*\(/i) &&
-	!text.match(/\bdefault\s*:/i)
-) {
-	warnings.push("Case statement found without a `default` branch.");
-}
-
-// Possible latch inference
-if (
-	text.match(/always\s*@\s*\*/i) &&
-	!text.match(/\belse\b/i)
-) {
-	warnings.push(
-		"Combinational block may infer a latch. Check for missing `else` or default assignments."
-	);
-}
-
-			// ---------- Output ----------
-
-			const output = vscode.window.createOutputChannel("FPGA AI Verification Tool");
-			output.clear();
-
-			output.appendLine(`Analysis for: ${document.fileName}`);
-			output.appendLine("");
-
-			output.appendLine("CRITICAL ERRORS");
-			output.appendLine("----------------");
-
-			if (criticalErrors.length === 0) {
-				output.appendLine("None");
-			} else {
-				criticalErrors.forEach((error, index) => {
-					output.appendLine(`${index + 1}. ${error}`);
-				});
+			if (!text.includes("default_nettype none")) {
+				warnings.push(
+					"Consider adding `default_nettype none` to catch undeclared wires."
+				);
 			}
 
-			output.appendLine("");
-			output.appendLine("WARNINGS");
-			output.appendLine("--------");
+			const sequentialBlocks =
+				text.match(/always\s*@\s*\([^)]*posedge[^)]*\)[\s\S]*?end/g) || [];
 
-			if (warnings.length === 0) {
-				output.appendLine("None");
-			} else {
-				warnings.forEach((warning, index) => {
-					output.appendLine(`${index + 1}. ${warning}`);
-				});
+			const hasBlockingInSequential = sequentialBlocks.some(block =>
+				/(?<![<>=!])=(?![=>=])/g.test(block)
+			);
+
+			if (hasBlockingInSequential) {
+				warnings.push(
+					"Possible blocking assignment `=` inside sequential logic. Use `<=` for flip-flops."
+				);
 			}
 
-			output.show();
+			if (
+				text.match(/always\s*@\s*\(\s*posedge|always_ff\s*@/i) &&
+				!text.match(/reset|rst/i)
+			) {
+				warnings.push(
+					"Sequential logic found, but no reset signal detected."
+				);
+			}
+
+			if (
+				text.match(/\bcase\s*\(/i) &&
+				!text.match(/\bdefault\s*:/i)
+			) {
+				warnings.push(
+					"Case statement found without a `default` branch."
+				);
+			}
+
+			if (
+				text.match(/always\s*@\s*\*/i) &&
+				!text.match(/\belse\b/i)
+			) {
+				warnings.push(
+					"Combinational block may infer a latch. Check for missing `else` or default assignments."
+				);
+			}
+
+			verificationProvider.updateResults(
+				document.fileName,
+				criticalErrors,
+				warnings
+			);
 
 			if (criticalErrors.length > 0) {
 				vscode.window.showErrorMessage(
-					`Found ${criticalErrors.length} critical error(s). Testbench generation blocked.`
+					`Found ${criticalErrors.length} critical error(s).`
 				);
 			} else if (warnings.length > 0) {
 				vscode.window.showWarningMessage(
-					`Found ${warnings.length} warning(s). Code can still be used for testbench generation.`
+					`Found ${warnings.length} warning(s).`
 				);
 			} else {
 				vscode.window.showInformationMessage(
-					"No HDL issues found. Code is ready for testbench generation."
+					"No HDL issues found."
 				);
 			}
 		}
