@@ -9,16 +9,20 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:fpga-ai-verification-tool.analyzeFile"
+  ],
   "main": "./out/extension.js",
+
   "contributes": {
     "commands": [
       {
-        "command": "fpga-ai-verification-tool.helloWorld",
-        "title": "Hello World"
+        "command": "fpga-ai-verification-tool.analyzeFile",
+        "title": "Analyze FPGA File"
       }
     ]
   },
+
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
@@ -27,6 +31,7 @@
     "lint": "eslint src",
     "test": "vscode-test"
   },
+
   "devDependencies": {
     "@types/vscode": "^1.118.0",
     "@types/mocha": "^10.0.10",
