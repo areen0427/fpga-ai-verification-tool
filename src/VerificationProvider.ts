@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
+import { VerificationResult } from './checker';
 
-type ResultKind = 'root' | 'file' | 'criticalGroup' | 'warningGroup' | 'critical' | 'warning';
+type ResultKind =
+	| 'file'
+	| 'criticalGroup'
+	| 'warningGroup'
+	| 'critical'
+	| 'warning'
+	| 'success';
 
 class ResultItem extends vscode.TreeItem {
 	constructor(
@@ -26,6 +33,10 @@ class ResultItem extends vscode.TreeItem {
 		if (kind === 'file') {
 			this.iconPath = new vscode.ThemeIcon('file');
 		}
+
+		if (kind === 'success') {
+			this.iconPath = new vscode.ThemeIcon('check');
+		}
 	}
 }
 
@@ -39,29 +50,51 @@ export class VerificationProvider implements vscode.TreeDataProvider<ResultItem>
 		this._onDidChangeTreeData.fire();
 	}
 
-	updateResults(fileName: string, criticalErrors: string[], warnings: string[]) {
-		const fileItem = new ResultItem(
-			`File: ${fileName.split('/').pop()}`,
-			'file'
-		);
+	updateResults(results: VerificationResult[]) {
+		this.rootItems = results.map(result => {
+			const fileName = result.fileName.split(/[\\/]/).pop() || result.fileName;
 
-		const criticalGroup = new ResultItem(
-			`Critical Errors: ${criticalErrors.length}`,
-			'criticalGroup',
-			criticalErrors.map(error =>
-				new ResultItem(error, 'critical')
-			)
-		);
+			const children: ResultItem[] = [];
 
-		const warningGroup = new ResultItem(
-			`Warnings: ${warnings.length}`,
-			'warningGroup',
-			warnings.map(warning =>
-				new ResultItem(warning, 'warning')
-			)
-		);
+			if (result.criticalErrors.length > 0) {
+				children.push(
+					new ResultItem(
+						`Critical Errors: ${result.criticalErrors.length}`,
+						'criticalGroup',
+						result.criticalErrors.map(error =>
+							new ResultItem(error, 'critical')
+						)
+					)
+				);
+			}
 
-		this.rootItems = [fileItem, criticalGroup, warningGroup];
+			if (result.warnings.length > 0) {
+				children.push(
+					new ResultItem(
+						`Warnings: ${result.warnings.length}`,
+						'warningGroup',
+						result.warnings.map(warning =>
+							new ResultItem(warning, 'warning')
+						)
+					)
+				);
+			}
+
+			if (children.length === 0) {
+				children.push(
+					new ResultItem(
+						"No issues found.",
+						'success'
+					)
+				);
+			}
+
+			return new ResultItem(
+				fileName,
+				'file',
+				children
+			);
+		});
 
 		this.refresh();
 	}

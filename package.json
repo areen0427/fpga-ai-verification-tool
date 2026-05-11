@@ -9,16 +9,17 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:fpga-ai-verification-tool.analyzeFile"
-  ],
   "main": "./out/extension.js",
 
   "contributes": {
     "commands": [
       {
         "command": "fpga-ai-verification-tool.analyzeFile",
-        "title": "Analyze FPGA File"
+        "title": "Analyze Current FPGA File"
+      },
+      {
+        "command": "fpga-ai-verification-tool.analyzeWorkspace",
+        "title": "Analyze FPGA Workspace"
       }
     ],
 
