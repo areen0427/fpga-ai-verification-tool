@@ -3,7 +3,7 @@ import { VerificationProvider } from './VerificationProvider';
 import { isHDLFile, runChecks } from './checker';
 import { findHDLFiles } from './utils/fileScanner';
 import { VerificationResult } from './checker';
-import { generateDummyTestbench } from "./gentb";
+import { generateOllamaTestbench } from "./gentb";
 
 export function activate(context: vscode.ExtensionContext) {
 	const verificationProvider = new VerificationProvider();
@@ -110,45 +110,68 @@ export function activate(context: vscode.ExtensionContext) {
 		panel.webview.html = getReportWebview(result);
 
 		panel.webview.onDidReceiveMessage(async (message) => {
-			switch (message.command) {
-				case "generateTestbench": {
-					const testbenchText =
-						await generateDummyTestbench(result.fileName);
+	switch (message.command) {
+		case "generateTestbench": {
+	let fullTestbench = "";
 
-					panel.webview.postMessage({
-						command: "showGeneratedTestbench",
-						testbenchText
-					});
+	panel.webview.postMessage({
+		command: "startGeneratedTestbench"
+	});
 
-					break;
-				}
+	await generateOllamaTestbench(result.fileName, async (chunk: string) => {
+		fullTestbench += chunk;
 
-				case "addTestbenchToProject": {
-					const tbPath = result.fileName.replace(
-						/\.(v|sv)$/,
-						"_tb.v"
-					);
-
-					const tbUri = vscode.Uri.file(tbPath);
-
-					await vscode.workspace.fs.writeFile(
-						tbUri,
-						Buffer.from(message.testbenchText, "utf8")
-					);
-
-					const doc =
-						await vscode.workspace.openTextDocument(tbUri);
-
-					await vscode.window.showTextDocument(doc);
-
-					vscode.window.showInformationMessage(
-						"Testbench added to project."
-					);
-
-					break;
-				}
-			}
+		panel.webview.postMessage({
+			command: "appendGeneratedTestbench",
+			chunk
 		});
+	});
+
+	fullTestbench = fullTestbench
+		.replace(/```verilog/g, "")
+		.replace(/```systemverilog/g, "")
+		.replace(/```sv/g, "")
+		.replace(/```/g, "")
+		.trim();
+
+	panel.webview.postMessage({
+		command: "showFinalGeneratedTestbench",
+		testbenchText: fullTestbench
+	});
+
+	panel.webview.postMessage({
+		command: "finishGeneratedTestbench"
+	});
+
+	break;
+}
+
+		case "addTestbenchToProject": {
+			const tbPath = result.fileName.replace(
+				/\.(v|sv)$/,
+				"_tb.v"
+			);
+
+			const tbUri = vscode.Uri.file(tbPath);
+
+			await vscode.workspace.fs.writeFile(
+				tbUri,
+				Buffer.from(message.testbenchText, "utf8")
+			);
+
+			const doc =
+				await vscode.workspace.openTextDocument(tbUri);
+
+			await vscode.window.showTextDocument(doc);
+
+			vscode.window.showInformationMessage(
+				"Testbench added to project."
+			);
+
+			break;
+		}
+	}
+});
 	}
 );
 
@@ -358,7 +381,7 @@ function getReportWebview(result: VerificationResult): string {
 						<p>Generate a starter testbench preview before adding it to your project.</p>
 					</div>
 
-					<button onclick="generateTestbench()">
+					<button id="generateBtn" onclick="generateTestbench()">
 						Generate Testbench
 					</button>
 				</div>
@@ -392,15 +415,30 @@ function getReportWebview(result: VerificationResult): string {
 		</div>
 
 		<script>
+
 			const vscode = acquireVsCodeApi();
 
 			let generatedTB = "";
 
-			function generateTestbench() {
-				vscode.postMessage({
-					command: "generateTestbench"
-				});
-			}
+			async function generateTestbench() {
+
+	const preview =
+		document.getElementById("tbPreview");
+
+	const button =
+		document.getElementById("generateBtn");
+
+	button.disabled = true;
+
+	button.textContent = "Generating...";
+
+	preview.textContent =
+		"Generating AI testbench with Ollama...\\n\\nThis may take a few seconds.";
+
+	vscode.postMessage({
+		command: "generateTestbench"
+	});
+}
 
 			function addToProject() {
 				vscode.postMessage({
@@ -409,19 +447,44 @@ function getReportWebview(result: VerificationResult): string {
 				});
 			}
 
-			window.addEventListener("message", event => {
-				const message = event.data;
+	window.addEventListener("message", event => {
+		const message = event.data;
 
-				if (message.command === "showGeneratedTestbench") {
-					generatedTB = message.testbenchText;
+		if (message.command === "startGeneratedTestbench") {
+			generatedTB = "";
 
-					document.getElementById("tbPreview").textContent =
-						generatedTB;
+			document.getElementById("tbPreview").textContent =
+				"Starting Ollama generation...";
 
-					document.getElementById("addTbBtn").style.display =
-						"inline-block";
-				}
-			});
+			document.getElementById("addTbBtn").style.display =
+				"none";
+		}
+
+		if (message.command === "appendGeneratedTestbench") {
+			generatedTB += message.chunk;
+
+			document.getElementById("tbPreview").textContent =
+				generatedTB;
+		}
+
+		if (message.command === "showFinalGeneratedTestbench") {
+			generatedTB = message.testbenchText;
+
+			document.getElementById("tbPreview").textContent =
+				generatedTB;
+		}
+
+		if (message.command === "finishGeneratedTestbench") {
+			document.getElementById("generateBtn").disabled = false;
+
+			document.getElementById("generateBtn").textContent =
+				"Generate Testbench";
+
+			document.getElementById("addTbBtn").style.display =
+				"inline-block";
+		}
+	});
+
 		</script>
 	</body>
 	</html>
