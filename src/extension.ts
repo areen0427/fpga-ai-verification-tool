@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { VerificationProvider } from './VerificationProvider';
+import { isHDLFile, runChecks } from './checker';
+import { findHDLFiles } from './utils/fileScanner';
 
 export function activate(context: vscode.ExtensionContext) {
-
 	const verificationProvider = new VerificationProvider();
 
 	vscode.window.registerTreeDataProvider(
@@ -10,10 +11,9 @@ export function activate(context: vscode.ExtensionContext) {
 		verificationProvider
 	);
 
-	const disposable = vscode.commands.registerCommand(
+	const analyzeFileCommand = vscode.commands.registerCommand(
 		'fpga-ai-verification-tool.analyzeFile',
 		async () => {
-
 			const editor = vscode.window.activeTextEditor;
 
 			if (!editor) {
@@ -22,118 +22,30 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			const document = editor.document;
-			const text = document.getText();
 
-			const isHDL =
-				document.fileName.endsWith(".v") ||
-				document.fileName.endsWith(".sv") ||
-				document.fileName.endsWith(".vhd");
-
-			if (!isHDL) {
+			if (!isHDLFile(document.fileName)) {
 				vscode.window.showWarningMessage(
 					"Open a Verilog, SystemVerilog, or VHDL file."
 				);
 				return;
 			}
 
-			const warnings: string[] = [];
-			const criticalErrors: string[] = [];
+			const result = runChecks(document.getText(), document.fileName);
 
-			// ---------- Critical checks ----------
+			verificationProvider.updateResults([
+				result
+			]);
 
-			if (!text.match(/\bmodule\s+\w+/i)) {
-				criticalErrors.push("No Verilog module declaration found.");
-			}
+			const criticalCount = result.criticalErrors.length;
+			const warningCount = result.warnings.length;
 
-			if (!text.match(/\bendmodule\b/i)) {
-				criticalErrors.push("Missing `endmodule`.");
-			}
-
-			const beginCount = (text.match(/\bbegin\b/g) || []).length;
-			const endCount = (text.match(/\bend\b/g) || []).length;
-
-			if (beginCount !== endCount) {
-				criticalErrors.push(
-					`Unbalanced begin/end blocks. Found ${beginCount} begin and ${endCount} end.`
-				);
-			}
-
-			const openParenCount = (text.match(/\(/g) || []).length;
-			const closeParenCount = (text.match(/\)/g) || []).length;
-
-			if (openParenCount !== closeParenCount) {
-				criticalErrors.push(
-					`Unbalanced parentheses. Found ${openParenCount} "(" and ${closeParenCount} ")".`
-				);
-			}
-
-			if (!text.match(/\binput\b/i) && !text.match(/\boutput\b/i)) {
-				criticalErrors.push(
-					"No input/output ports detected. Testbench generation may fail."
-				);
-			}
-
-			// ---------- Warning checks ----------
-
-			if (!text.includes("default_nettype none")) {
-				warnings.push(
-					"Consider adding `default_nettype none` to catch undeclared wires."
-				);
-			}
-
-			const sequentialBlocks =
-				text.match(/always\s*@\s*\([^)]*posedge[^)]*\)[\s\S]*?end/g) || [];
-
-			const hasBlockingInSequential = sequentialBlocks.some(block =>
-				/(?<![<>=!])=(?![=>=])/g.test(block)
-			);
-
-			if (hasBlockingInSequential) {
-				warnings.push(
-					"Possible blocking assignment `=` inside sequential logic. Use `<=` for flip-flops."
-				);
-			}
-
-			if (
-				text.match(/always\s*@\s*\(\s*posedge|always_ff\s*@/i) &&
-				!text.match(/reset|rst/i)
-			) {
-				warnings.push(
-					"Sequential logic found, but no reset signal detected."
-				);
-			}
-
-			if (
-				text.match(/\bcase\s*\(/i) &&
-				!text.match(/\bdefault\s*:/i)
-			) {
-				warnings.push(
-					"Case statement found without a `default` branch."
-				);
-			}
-
-			if (
-				text.match(/always\s*@\s*\*/i) &&
-				!text.match(/\belse\b/i)
-			) {
-				warnings.push(
-					"Combinational block may infer a latch. Check for missing `else` or default assignments."
-				);
-			}
-
-			verificationProvider.updateResults(
-				document.fileName,
-				criticalErrors,
-				warnings
-			);
-
-			if (criticalErrors.length > 0) {
+			if (criticalCount > 0) {
 				vscode.window.showErrorMessage(
-					`Found ${criticalErrors.length} critical error(s).`
+					`Found ${criticalCount} critical error(s).`
 				);
-			} else if (warnings.length > 0) {
+			} else if (warningCount > 0) {
 				vscode.window.showWarningMessage(
-					`Found ${warnings.length} warning(s).`
+					`Found ${warningCount} warning(s).`
 				);
 			} else {
 				vscode.window.showInformationMessage(
@@ -143,7 +55,45 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
-	context.subscriptions.push(disposable);
+	const analyzeWorkspaceCommand = vscode.commands.registerCommand(
+		'fpga-ai-verification-tool.analyzeWorkspace',
+		async () => {
+			const files = await findHDLFiles();
+
+			if (files.length === 0) {
+				vscode.window.showInformationMessage(
+					"No Verilog, SystemVerilog, or VHDL files found in this workspace."
+				);
+				return;
+			}
+
+			const results = [];
+
+			for (const file of files) {
+				const document = await vscode.workspace.openTextDocument(file);
+				const result = runChecks(document.getText(), document.fileName);
+				results.push(result);
+			}
+
+			verificationProvider.updateResults(results);
+
+			const totalCritical = results.reduce(
+				(sum, result) => sum + result.criticalErrors.length,
+				0
+			);
+
+			const totalWarnings = results.reduce(
+				(sum, result) => sum + result.warnings.length,
+				0
+			);
+
+			vscode.window.showInformationMessage(
+				`Checked ${files.length} HDL file(s): ${totalCritical} critical error(s), ${totalWarnings} warning(s).`
+			);
+		}
+	);
+
+	context.subscriptions.push(analyzeFileCommand, analyzeWorkspaceCommand);
 }
 
 export function deactivate() {}
