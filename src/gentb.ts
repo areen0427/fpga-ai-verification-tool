@@ -1,35 +1,119 @@
 import * as vscode from "vscode";
 
-export async function generateOllamaTestbench(
-	filePath: string,
-	onChunk: (chunk: string) => void
-): Promise<void> {
-	const uri = vscode.Uri.file(filePath);
-	const document = await vscode.workspace.openTextDocument(uri);
+export type TestbenchDepth =
+	| "basic"
+	| "standard"
+	| "exhaustive"
+	| "custom";
 
-	const sourceCode = document.getText();
+export interface TestbenchSettings {
+	testbenchDepth: TestbenchDepth;
+	customCaseCount: number;
+	includeEdgeCases: boolean;
+	includeInvalidInputs: boolean;
+	includeRandomTests: boolean;
+	includeAssertions: boolean;
+	includeSelfChecking: boolean;
+	includeWaveDump: boolean;
+	includeComments: boolean;
+	customPrompt: string;
+}
 
-	const prompt = `
-You are an expert FPGA verification engineer.
+	export async function generateOllamaTestbench(
+		filePath: string,
+		settings: TestbenchSettings,
+		onChunk: (chunk: string) => void
+	): Promise<void> {
+		const uri = vscode.Uri.file(filePath);
+		const document = await vscode.workspace.openTextDocument(uri);
+		const sourceCode = document.getText();
 
-Generate a Verilog/SystemVerilog testbench for the HDL module below.
+		function buildDepthInstructions(settings: TestbenchSettings): string {
+			switch (settings.testbenchDepth) {
+				case "basic":
+					return `
+	DEPTH: BASIC
+	- Generate 3 to 5 simple directed tests.
+	- No random tests.
+	- No complex tasks/classes.
+	- Simple pass/fail $display messages.
+	`;
 
-Rules:
-- Output ONLY code.
-- Do NOT use markdown.
-- Do NOT use triple backticks.
-- Do NOT explain anything.
-- Include \`timescale 1ns / 1ps.
-- Instantiate the DUT.
-- Generate a clock if a clock input exists.
-- Generate reset stimulus if reset exists.
-- Add simple meaningful test cases.
-- Add $display statements.
-- End with $finish.
+				case "standard":
+					return `
+	DEPTH: STANDARD
+	- Generate 8 to 15 directed tests.
+	- Include normal and edge cases.
+	- Include self-checking when outputs are clear.
+	- Include waveform dump.
+	`;
 
-HDL source:
-${sourceCode}
-`;
+				case "exhaustive":
+					return `
+	DEPTH: EXHAUSTIVE
+	- Generate 25+ tests when reasonable.
+	- Include normal, edge, boundary, repeated, and unusual cases.
+	- Use random tests only if the inputs are simple.
+	- Include waveform dump and detailed pass/fail messages.
+	`;
+
+				case "custom":
+					return `
+	DEPTH: CUSTOM
+	- Number of test cases: ${settings.customCaseCount}
+	- Edge cases: ${settings.includeEdgeCases}
+	- Invalid/unusual inputs: ${settings.includeInvalidInputs}
+	- Random tests: ${settings.includeRandomTests}
+	- Assertions: ${settings.includeAssertions}
+	- Self-checking: ${settings.includeSelfChecking}
+	- Wave dump: ${settings.includeWaveDump}
+	- Comments: ${settings.includeComments}
+	- Extra user instructions: ${settings.customPrompt || "None"}
+	`;
+			}
+		}
+
+		const prompt = `
+	You are an FPGA verification engineer.
+
+	Generate one complete Icarus Verilog-compatible testbench for the HDL module below.
+
+	Output rules:
+	- Output only Verilog/SystemVerilog code.
+	- No markdown.
+	- No triple backticks.
+	- Start with: \`timescale 1ns / 1ps
+	- End with: endmodule
+	- The simulation must call $finish.
+
+	Testbench rules:
+	- Instantiate the DUT using the exact module ports.
+	- Generate clk only if the DUT has a clock input.
+	- Generate reset only if the DUT has a reset input.
+	- Only check public output ports.
+	- Do not reference internal signals or hidden FSM states.
+	- Drive inputs before the active clock edge.
+	- Check outputs after the DUT has had time to update.
+	- If using a forever clock, the stimulus block must still end with $finish.
+	- Keep runtime short.
+
+	Task rules:
+	- If using a check task, expected values must be task inputs.
+	- Never declare expected values as task outputs.
+	- Never pass constants like 1'b0 or 1'b1 into task output/inout ports.
+	- Compare expected values against DUT outputs inside the task.
+
+	FSM/sequential rules:
+	- Reset the DUT before independent test cases.
+	- Only keep state between steps when testing an intentional sequence.
+	- For FSMs, verify behavior through outputs only.
+	- For vending machines, check dispense/refund outputs, not state names.
+
+	${buildDepthInstructions(settings)}
+
+	HDL source:
+	${sourceCode}
+	`;
 
 	const response = await fetch("http://localhost:11434/api/generate", {
 		method: "POST",

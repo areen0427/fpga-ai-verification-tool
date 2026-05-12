@@ -3,14 +3,90 @@ import { VerificationProvider } from './VerificationProvider';
 import { isHDLFile, runChecks } from './checker';
 import { findHDLFiles } from './utils/fileScanner';
 import { VerificationResult } from './checker';
-import { generateOllamaTestbench } from "./gentb";
 import { runIverilogSimulation } from "./simulator/iverilogRunner";
 import { getReportWebview } from "./reportWebview";
+import {
+	generateOllamaTestbench,
+	TestbenchSettings
+} from "./gentb";
+
+
+	type PreAnalysisResult = {
+	summary: string;
+	moduleName?: string;
+	isSequential: boolean;
+	hasClock: boolean;
+	hasReset: boolean;
+	outputCount: number;
+};
+
+function preAnalyzeVerilog(text: string): PreAnalysisResult {
+
+	const moduleMatch =
+		text.match(/\bmodule\s+([a-zA-Z_][a-zA-Z0-9_$]*)/);
+
+	const moduleName = moduleMatch?.[1];
+
+	const hasClock =
+		/\b(clk|clock)\b/i.test(text);
+
+	const hasReset =
+		/\b(rst|reset|rst_n|reset_n)\b/i.test(text);
+
+	const isSequential =
+		/always\s*@\s*\([^)]*posedge|always\s*@\s*\([^)]*negedge|always_ff/i
+			.test(text);
+
+	const outputMatches =
+		text.match(/\boutput\b/g);
+
+	const outputCount =
+		outputMatches ? outputMatches.length : 0;
+
+	let summary =
+		"Combinational logic detected.";
+
+	if (isSequential && hasClock && hasReset) {
+		summary =
+			"Sequential design with clock/reset detected.";
+	}
+	else if (isSequential && hasClock) {
+		summary =
+			"Clocked sequential logic detected.";
+	}
+
+	if (/fsm|state|case\s*\(/i.test(text)) {
+		summary =
+			"FSM-style sequential design detected.";
+	}
+
+	return {
+		summary,
+		moduleName,
+		isSequential,
+		hasClock,
+		hasReset,
+		outputCount
+	};
+}
 
 export function activate(context: vscode.ExtensionContext) {
 	const verificationProvider = new VerificationProvider();
 
 	let canAddGeneratedTbToProject = false;
+
+	let testbenchSettings: TestbenchSettings = {
+		testbenchDepth: "standard",
+		customCaseCount: 20,
+		includeEdgeCases: true,
+		includeInvalidInputs: true,
+		includeRandomTests: false,
+		includeAssertions: true,
+		includeSelfChecking: true,
+		includeWaveDump: true,
+		includeComments: true,
+		customPrompt: ""
+	};
 
 	vscode.window.registerTreeDataProvider(
 		'fpgaVerifierResults',
@@ -112,10 +188,32 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		);
 
-		panel.webview.html = getReportWebview(result);
+		const document =
+		await vscode.workspace.openTextDocument(
+			result.fileName
+		);
+
+		const preAnalysis =
+		preAnalyzeVerilog(document.getText());
+
+		panel.webview.html =
+		getReportWebview(
+			result,
+			preAnalysis
+		);
 
 		panel.webview.onDidReceiveMessage(async (message) => {
 			switch (message.command) {
+
+				case "updateTestbenchSettings": {
+					testbenchSettings = {
+						...testbenchSettings,
+						...message.settings
+					};
+
+					break;
+				}
+
 				case "generateTestbench": {
 					let fullTestbench = "";
 
@@ -126,13 +224,17 @@ export function activate(context: vscode.ExtensionContext) {
 							command: "startGeneratedTestbench"
 						});
 
-						await generateOllamaTestbench(result.fileName, async (chunk: string) => {
+						await generateOllamaTestbench(
+							result.fileName,
+							testbenchSettings,
+							async (chunk: string) => {
 							fullTestbench += chunk;
 
 							panel.webview.postMessage({
 								command: "appendGeneratedTestbench",
 								chunk
-							});
+							}
+							);
 						});
 
 						fullTestbench = fullTestbench
