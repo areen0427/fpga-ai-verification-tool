@@ -47,7 +47,7 @@ export async function runIverilogSimulation(
 	simOutPath,
 	tbPath,
 	designFile
-], workspacePath);
+], workspacePath, 10000);
 
 	fullLog += "=== IVERILOG COMPILE ===\n";
 	fullLog += compileResult.output + "\n";
@@ -56,7 +56,7 @@ export async function runIverilogSimulation(
 		return parseSimulationOutput(compileResult.code, null, fullLog);
 	}
 
-	const simResult = await runCommand("vvp", [simOutPath], workspacePath);
+	const simResult = await runCommand("vvp", [simOutPath], workspacePath, 10000);
 
 	fullLog += "\n=== VVP SIMULATION ===\n";
 	fullLog += simResult.output + "\n";
@@ -84,12 +84,32 @@ export async function runIverilogSimulation(
 function runCommand(
 	command: string,
 	args: string[],
-	cwd: string
-): Promise<{ code: number | null; output: string }> {
+	cwd: string,
+	timeoutMs = 10000
+): Promise<{ code: number | null; output: string; timedOut: boolean }> {
 	return new Promise(resolve => {
 		const child = spawn(command, args, { cwd });
 
 		let output = "";
+		let finished = false;
+
+		const timeout = setTimeout(() => {
+			if (finished) {
+				return;
+			}
+
+			finished = true;
+			child.kill();
+
+			resolve({
+				code: null,
+				output:
+					output +
+					`\n\n${command} timed out after ${timeoutMs / 1000} seconds. ` +
+					`The generated testbench may be missing $finish or stuck in an infinite loop.`,
+				timedOut: true
+			});
+		}, timeoutMs);
 
 		child.stdout.on("data", data => {
 			output += data.toString();
@@ -100,16 +120,35 @@ function runCommand(
 		});
 
 		child.on("error", error => {
+			if (finished) {
+				return;
+			}
+
+			finished = true;
+			clearTimeout(timeout);
+
 			resolve({
 				code: 1,
 				output:
 					`${error.message}\n\n` +
-					`Make sure Icarus Verilog is installed and available in PATH.`
+					`Make sure Icarus Verilog is installed and available in PATH.`,
+				timedOut: false
 			});
 		});
 
 		child.on("close", code => {
-			resolve({ code, output });
+			if (finished) {
+				return;
+			}
+
+			finished = true;
+			clearTimeout(timeout);
+
+			resolve({
+				code,
+				output,
+				timedOut: false
+			});
 		});
 	});
 }

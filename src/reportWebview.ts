@@ -108,7 +108,7 @@ export function getReportWebview(result: VerificationResult): string {
 				height: 38px;
 				padding: 0 14px;
 				border-radius: 10px;
-				background: #3a1f1f;
+				background: rgba(255, 92, 92, 0.08);
 				color: #ff5c5c;
 				border: 1px solid rgba(255, 92, 92, 0.45);
 				font-size: 13px;
@@ -120,7 +120,7 @@ export function getReportWebview(result: VerificationResult): string {
 			}
 
 			.clear-btn:hover {
-				background: #552525;
+				background: rgba(255, 92, 92, 0.16);
 			}
 
 			h2 {
@@ -158,6 +158,65 @@ export function getReportWebview(result: VerificationResult): string {
 
 			.secondary-btn:hover {
 				background: #3f3f3f;
+			}
+
+			.settings-panel {
+				margin-top: 14px;
+				padding: 14px;
+				border-radius: 12px;
+				background: #161616;
+				border: 1px solid #333333;
+				display: flex;
+				flex-direction: column;
+				gap: 12px;
+			}
+
+			.settings-panel.hidden {
+				display: none;
+			}
+
+			.hidden {
+				display: none !important;
+			}
+
+			.settings-panel label {
+				font-size: 13px;
+				font-weight: 600;
+				color: #dddddd;
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+			}
+
+			.settings-panel input,
+			.settings-panel select,
+			.settings-panel textarea {
+				background: #222222;
+				color: #f3f3f3;
+				border: 1px solid #444444;
+				border-radius: 8px;
+				padding: 8px;
+				font-size: 13px;
+			}
+
+			.settings-panel textarea {
+				resize: vertical;
+				min-height: 100px;
+			}
+
+			.custom-settings {
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+				padding-top: 10px;
+				border-top: 1px solid #333333;
+			}
+
+			.checkbox-row {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				font-size: 13px;
 			}
 
 			.preview {
@@ -244,8 +303,15 @@ export function getReportWebview(result: VerificationResult): string {
 		</div>
 
 		<div class="top-actions">
-			<button id="generateBtn" >
+			<button id="generateBtn">
 				Generate Testbench
+			</button>
+
+			<button
+				id="settingsBtn"
+				class="secondary-btn"
+			>
+				Settings
 			</button>
 
 			<button
@@ -264,6 +330,69 @@ export function getReportWebview(result: VerificationResult): string {
 			>
 				Clear
 			</button>
+		</div>
+	</div>
+
+	<div id="settingsPanel" class="settings-panel hidden">
+		<label>
+			Testbench Depth
+
+			<select id="tbDepth">
+				<option value="basic">Basic</option>
+				<option value="standard" selected>Standard</option>
+				<option value="exhaustive">Exhaustive</option>
+				<option value="custom">Custom</option>
+			</select>
+		</label>
+
+		<div id="customSettings" class="custom-settings hidden">
+			<label>
+				Number of test cases
+				<input id="customCaseCount" type="number" min="1" max="1000" value="20" />
+			</label>
+
+			<label class="checkbox-row">
+				<input id="includeEdgeCases" type="checkbox" checked />
+				Include edge cases
+			</label>
+
+			<label class="checkbox-row">
+				<input id="includeInvalidInputs" type="checkbox" checked />
+				Include invalid inputs
+			</label>
+
+			<label class="checkbox-row">
+				<input id="includeRandomTests" type="checkbox" />
+				Include randomized tests
+			</label>
+
+			<label class="checkbox-row">
+				<input id="includeAssertions" type="checkbox" checked />
+				Include assertions
+			</label>
+
+			<label class="checkbox-row">
+				<input id="includeSelfChecking" type="checkbox" checked />
+				Include self-checking
+			</label>
+
+			<label class="checkbox-row">
+				<input id="includeWaveDump" type="checkbox" checked />
+				Include waveform dumping
+			</label>
+
+			<label class="checkbox-row">
+				<input id="includeComments" type="checkbox" checked />
+				Include comments
+			</label>
+
+			<label>
+				Custom AI instructions
+				<textarea
+					id="customPrompt"
+					placeholder="Example: Add overflow testing, reset glitches, and protocol timing checks."
+				></textarea>
+			</label>
 		</div>
 	</div>
 
@@ -309,6 +438,69 @@ export function getReportWebview(result: VerificationResult): string {
 	let queuedChunks = "";
 	let ignoreIncoming = false;
 	let canAddGeneratedTbToProject = false;
+	const settingsBtn =
+	document.getElementById("settingsBtn");
+
+	const settingsPanel =
+		document.getElementById("settingsPanel");
+
+	const tbDepth =
+		document.getElementById("tbDepth");
+
+	const customSettings =
+		document.getElementById("customSettings");
+
+	
+	function sendTestbenchSettings() {
+
+		const selectedDepth =
+			document.getElementById("tbDepth").value;
+
+		const isCustom =
+			selectedDepth === "custom";
+
+		customSettings.classList.toggle(
+			"hidden",
+			!isCustom
+		);
+
+		const settings = {
+			testbenchDepth: selectedDepth,
+
+			customCaseCount: Number(
+				document.getElementById("customCaseCount").value
+			),
+
+			includeEdgeCases:
+				document.getElementById("includeEdgeCases").checked,
+
+			includeInvalidInputs:
+				document.getElementById("includeInvalidInputs").checked,
+
+			includeRandomTests:
+				document.getElementById("includeRandomTests").checked,
+
+			includeAssertions:
+				document.getElementById("includeAssertions").checked,
+
+			includeSelfChecking:
+				document.getElementById("includeSelfChecking").checked,
+
+			includeWaveDump:
+				document.getElementById("includeWaveDump").checked,
+
+			includeComments:
+				document.getElementById("includeComments").checked,
+
+			customPrompt:
+				document.getElementById("customPrompt").value
+		};
+
+		vscode.postMessage({
+			command: "updateTestbenchSettings",
+			settings
+		});
+	}
 
 	function generateTestbench() {
 
@@ -452,6 +644,40 @@ export function getReportWebview(result: VerificationResult): string {
 		}
 	}
 
+	settingsBtn.addEventListener("click", () => {
+		settingsPanel.classList.toggle("hidden");
+	});
+
+	tbDepth.addEventListener(
+		"change",
+		sendTestbenchSettings
+	);
+
+	[
+		"customCaseCount",
+		"includeEdgeCases",
+		"includeInvalidInputs",
+		"includeRandomTests",
+		"includeAssertions",
+		"includeSelfChecking",
+		"includeWaveDump",
+		"includeComments",
+		"customPrompt"
+	].forEach(id => {
+
+		const el = document.getElementById(id);
+
+		el.addEventListener(
+			"input",
+			sendTestbenchSettings
+		);
+
+		el.addEventListener(
+			"change",
+			sendTestbenchSettings
+		);
+	});
+
 	window.addEventListener("message", event => {
 		const message = event.data;
 
@@ -465,7 +691,7 @@ export function getReportWebview(result: VerificationResult): string {
 			canAddGeneratedTbToProject = false;
 
 			document.getElementById("tbPreview").textContent =
-				"Starting Ollama generation...";
+				"Starting generation...";
 
 			hideAddButtons();
 			setSimulationStatus("");
@@ -551,6 +777,9 @@ export function getReportWebview(result: VerificationResult): string {
 	document
 		.getElementById("clearTbBtn")
 		.addEventListener("click", clearTestbench);
+
+	sendTestbenchSettings();
+
 </script>
 
 	</body>

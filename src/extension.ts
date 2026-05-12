@@ -3,14 +3,30 @@ import { VerificationProvider } from './VerificationProvider';
 import { isHDLFile, runChecks } from './checker';
 import { findHDLFiles } from './utils/fileScanner';
 import { VerificationResult } from './checker';
-import { generateOllamaTestbench } from "./gentb";
 import { runIverilogSimulation } from "./simulator/iverilogRunner";
 import { getReportWebview } from "./reportWebview";
+import {
+	generateOllamaTestbench,
+	TestbenchSettings
+} from "./gentb";
 
 export function activate(context: vscode.ExtensionContext) {
 	const verificationProvider = new VerificationProvider();
 
 	let canAddGeneratedTbToProject = false;
+
+	let testbenchSettings: TestbenchSettings = {
+		testbenchDepth: "standard",
+		customCaseCount: 20,
+		includeEdgeCases: true,
+		includeInvalidInputs: true,
+		includeRandomTests: false,
+		includeAssertions: true,
+		includeSelfChecking: true,
+		includeWaveDump: true,
+		includeComments: true,
+		customPrompt: ""
+	};
 
 	vscode.window.registerTreeDataProvider(
 		'fpgaVerifierResults',
@@ -116,6 +132,16 @@ export function activate(context: vscode.ExtensionContext) {
 
 		panel.webview.onDidReceiveMessage(async (message) => {
 			switch (message.command) {
+
+				case "updateTestbenchSettings": {
+					testbenchSettings = {
+						...testbenchSettings,
+						...message.settings
+					};
+
+					break;
+				}
+
 				case "generateTestbench": {
 					let fullTestbench = "";
 
@@ -126,13 +152,17 @@ export function activate(context: vscode.ExtensionContext) {
 							command: "startGeneratedTestbench"
 						});
 
-						await generateOllamaTestbench(result.fileName, async (chunk: string) => {
+						await generateOllamaTestbench(
+							result.fileName,
+							testbenchSettings,
+							async (chunk: string) => {
 							fullTestbench += chunk;
 
 							panel.webview.postMessage({
 								command: "appendGeneratedTestbench",
 								chunk
-							});
+							}
+							);
 						});
 
 						fullTestbench = fullTestbench
