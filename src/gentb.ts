@@ -19,134 +19,97 @@ export interface TestbenchSettings {
 	customPrompt: string;
 }
 
-export async function generateOllamaTestbench(
-	filePath: string,
-	settings: TestbenchSettings,
-	onChunk: (chunk: string) => void
-): Promise<void>{
-	const uri = vscode.Uri.file(filePath);
-	const document = await vscode.workspace.openTextDocument(uri);
+	export async function generateOllamaTestbench(
+		filePath: string,
+		settings: TestbenchSettings,
+		onChunk: (chunk: string) => void
+	): Promise<void> {
+		const uri = vscode.Uri.file(filePath);
+		const document = await vscode.workspace.openTextDocument(uri);
+		const sourceCode = document.getText();
 
-	const sourceCode = document.getText();
-
-	function buildDepthInstructions(settings: TestbenchSettings): string {
-		if (settings.testbenchDepth === "basic") {
-			return `
-	DEPTH MODE: BASIC
-
-	Generate a simple starter testbench.
-
-	Strict requirements:
-	- Use about 3 to 5 directed test cases.
-	- Do not use randomized testing.
-	- Do not use assertions unless extremely simple.
-	- Do not create complex tasks/classes.
-	- Include clock/reset only if the DUT needs them.
-	- Include simple $display messages.
-	- Prioritize readability over coverage.
+		function buildDepthInstructions(settings: TestbenchSettings): string {
+			switch (settings.testbenchDepth) {
+				case "basic":
+					return `
+	DEPTH: BASIC
+	- Generate 3 to 5 simple directed tests.
+	- No random tests.
+	- No complex tasks/classes.
+	- Simple pass/fail $display messages.
 	`;
-		}
 
-		if (settings.testbenchDepth === "standard") {
-			return `
-	DEPTH MODE: STANDARD
-
-	Generate a practical verification testbench.
-
-	Strict requirements:
-	- Use about 8 to 15 directed test cases.
-	- Include normal cases.
-	- Include important edge cases.
-	- Include basic self-checking with expected values when possible.
-	- Include $display pass/fail messages.
+				case "standard":
+					return `
+	DEPTH: STANDARD
+	- Generate 8 to 15 directed tests.
+	- Include normal and edge cases.
+	- Include self-checking when outputs are clear.
 	- Include waveform dump.
-	- Avoid overly complex randomized testing.
 	`;
+
+				case "exhaustive":
+					return `
+	DEPTH: EXHAUSTIVE
+	- Generate 25+ tests when reasonable.
+	- Include normal, edge, boundary, repeated, and unusual cases.
+	- Use random tests only if the inputs are simple.
+	- Include waveform dump and detailed pass/fail messages.
+	`;
+
+				case "custom":
+					return `
+	DEPTH: CUSTOM
+	- Number of test cases: ${settings.customCaseCount}
+	- Edge cases: ${settings.includeEdgeCases}
+	- Invalid/unusual inputs: ${settings.includeInvalidInputs}
+	- Random tests: ${settings.includeRandomTests}
+	- Assertions: ${settings.includeAssertions}
+	- Self-checking: ${settings.includeSelfChecking}
+	- Wave dump: ${settings.includeWaveDump}
+	- Comments: ${settings.includeComments}
+	- Extra user instructions: ${settings.customPrompt || "None"}
+	`;
+			}
 		}
 
-		if (settings.testbenchDepth === "exhaustive") {
-			return `
-	DEPTH MODE: EXHAUSTIVE
+		const prompt = `
+	You are an FPGA verification engineer.
 
-	Generate a thorough verification testbench.
+	Generate one complete Icarus Verilog-compatible testbench for the HDL module below.
 
-	Strict requirements:
-	- Use 25 or more test cases when reasonable.
-	- Include normal cases, edge cases, boundary cases, and repeated scenarios.
-	- Include invalid/unusual input combinations when appropriate.
-	- Include randomized testing if inputs are suitable.
-	- Include self-checking logic with expected values when possible.
-	- Include assertions when compatible with Icarus Verilog.
-	- Include waveform dump.
-	- Include detailed pass/fail reporting.
-	- Try to maximize behavioral coverage.
-	`;
-		}
+	Output rules:
+	- Output only Verilog/SystemVerilog code.
+	- No markdown.
+	- No triple backticks.
+	- Start with: \`timescale 1ns / 1ps
+	- End with: endmodule
+	- The simulation must call $finish.
 
-		return `
-	DEPTH MODE: CUSTOM
+	Testbench rules:
+	- Instantiate the DUT using the exact module ports.
+	- Generate clk only if the DUT has a clock input.
+	- Generate reset only if the DUT has a reset input.
+	- Only check public output ports.
+	- Do not reference internal signals or hidden FSM states.
+	- Drive inputs before the active clock edge.
+	- Check outputs after the DUT has had time to update.
+	- If using a forever clock, the stimulus block must still end with $finish.
+	- Keep runtime short.
 
-	Generate a testbench using exactly these user-selected options:
+	Task rules:
+	- If using a check task, expected values must be task inputs.
+	- Never declare expected values as task outputs.
+	- Never pass constants like 1'b0 or 1'b1 into task output/inout ports.
+	- Compare expected values against DUT outputs inside the task.
 
-	Number of test cases: ${settings.customCaseCount}
-	Include edge cases: ${settings.includeEdgeCases}
-	Include invalid/unusual inputs: ${settings.includeInvalidInputs}
-	Include randomized tests: ${settings.includeRandomTests}
-	Include assertions: ${settings.includeAssertions}
-	Include self-checking logic: ${settings.includeSelfChecking}
-	Include waveform dump: ${settings.includeWaveDump}
-	Include comments: ${settings.includeComments}
+	FSM/sequential rules:
+	- Reset the DUT before independent test cases.
+	- Only keep state between steps when testing an intentional sequence.
+	- For FSMs, verify behavior through outputs only.
+	- For vending machines, check dispense/refund outputs, not state names.
 
-	Additional custom AI instructions:
-	${settings.customPrompt || "None"}
-	`;
-	}
-
-	const prompt = `
-	You are an expert FPGA verification engineer.
-
-	Generate a Verilog/SystemVerilog testbench for the HDL module below.
-
-	Rules:
-	- Output ONLY code.
-	- Do NOT use markdown.
-	- Do NOT use triple backticks.
-	- Do NOT explain anything.
-	- Include \`timescale 1ns / 1ps.
-	- Instantiate the DUT correctly.
-	- Generate a clock if needed.
-	- Generate reset logic if needed.
-	- End with endmodule.
-	- Make the testbench compatible with Icarus Verilog when possible.
-	- Only check DUT output ports.
-	- Do NOT check internal states unless the state signal is an actual output port.
-	- If internal FSM states are not exposed, infer behavior only from public outputs.
-	- Do NOT write expectations like "state should be ST_1" unless state is connected to an output.
-	- For vending machine FSMs, check dispense/refund behavior, not hidden state names.
-
-	Testbench generation settings:
 	${buildDepthInstructions(settings)}
-
-	Important:
-	- The selected depth mode must strongly control the complexity of the generated testbench.
-	- Basic should be short and simple.
-	- Standard should be practical and moderately thorough.
-	- Exhaustive should be much more complete and aggressive.
-	- Custom should follow the user-selected options exactly.
-	- The testbench MUST call $finish.
-	- The testbench MUST NOT run forever.
-	- If using forever clock generation, the stimulus block must still end with $finish.
-	- Keep simulation runtime short.
-	- For sequential logic or FSMs, each independent test case MUST reset the DUT before starting.
-	- Do not let state carry over between independent test cases unless the test is explicitly checking a multi-step sequence.
-	- Drive inputs on clock boundaries using @(negedge clk) or before @(posedge clk).
-	- Check outputs only after the DUT has had enough clock edges to update.
-	- For FSMs, prefer a reusable reset_dut task and check_case task.
-	- If a test checks a sequence, clearly keep it in one named sequence test.
-	- Do not assume the DUT starts from idle unless reset_dut was called.
-	- Never check outputs immediately after changing inputs for sequential logic.
-	- For Moore-style FSM outputs, wait one full clock cycle after the state transition before checking outputs.
-	- For Mealy-style FSM outputs, still check after inputs have settled and timing is clear.
 
 	HDL source:
 	${sourceCode}

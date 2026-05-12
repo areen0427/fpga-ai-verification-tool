@@ -1,6 +1,9 @@
 import { VerificationResult } from "./checker";
 
-export function getReportWebview(result: VerificationResult): string {
+export function getReportWebview(
+	result: VerificationResult,
+	preAnalysis: any
+): string {
 	const fileName =
 		result.fileName.split(/[\\/]/).pop() || result.fileName;
 
@@ -79,6 +82,12 @@ export function getReportWebview(result: VerificationResult): string {
 			.badge.warning {
 				color: #ffd84d;
 				border-color: rgba(255, 216, 77, 0.35);
+			}
+
+			.badge.analysis {
+				color: #19f5d0;
+				border-color: rgba(25, 245, 208, 0.35);
+				background: rgba(25, 245, 208, 0.08);
 			}
 
 			.card {
@@ -286,14 +295,18 @@ export function getReportWebview(result: VerificationResult): string {
 				<div class="file-name">${fileName}</div>
 
 				<div class="summary">
-					<div class="badge critical">
-						❌ ${result.criticalErrors.length} Critical Errors
-					</div>
+			<div class="badge critical">
+				❌ ${result.criticalErrors.length} Critical Errors
+			</div>
 
-					<div class="badge warning">
-						⚠ ${result.warnings.length} Warnings
-					</div>
-				</div>
+			<div class="badge warning">
+				⚠ ${result.warnings.length} Warnings
+			</div>
+
+			<div class="badge analysis">
+				 ${preAnalysis.summary}
+			</div>
+	</div>
 			</div>
 
 		<div class="card">

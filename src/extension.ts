@@ -10,6 +10,66 @@ import {
 	TestbenchSettings
 } from "./gentb";
 
+
+	type PreAnalysisResult = {
+	summary: string;
+	moduleName?: string;
+	isSequential: boolean;
+	hasClock: boolean;
+	hasReset: boolean;
+	outputCount: number;
+};
+
+function preAnalyzeVerilog(text: string): PreAnalysisResult {
+
+	const moduleMatch =
+		text.match(/\bmodule\s+([a-zA-Z_][a-zA-Z0-9_$]*)/);
+
+	const moduleName = moduleMatch?.[1];
+
+	const hasClock =
+		/\b(clk|clock)\b/i.test(text);
+
+	const hasReset =
+		/\b(rst|reset|rst_n|reset_n)\b/i.test(text);
+
+	const isSequential =
+		/always\s*@\s*\([^)]*posedge|always\s*@\s*\([^)]*negedge|always_ff/i
+			.test(text);
+
+	const outputMatches =
+		text.match(/\boutput\b/g);
+
+	const outputCount =
+		outputMatches ? outputMatches.length : 0;
+
+	let summary =
+		"Combinational logic detected.";
+
+	if (isSequential && hasClock && hasReset) {
+		summary =
+			"Sequential design with clock/reset detected.";
+	}
+	else if (isSequential && hasClock) {
+		summary =
+			"Clocked sequential logic detected.";
+	}
+
+	if (/fsm|state|case\s*\(/i.test(text)) {
+		summary =
+			"FSM-style sequential design detected.";
+	}
+
+	return {
+		summary,
+		moduleName,
+		isSequential,
+		hasClock,
+		hasReset,
+		outputCount
+	};
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	const verificationProvider = new VerificationProvider();
 
@@ -128,7 +188,19 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		);
 
-		panel.webview.html = getReportWebview(result);
+		const document =
+		await vscode.workspace.openTextDocument(
+			result.fileName
+		);
+
+		const preAnalysis =
+		preAnalyzeVerilog(document.getText());
+
+		panel.webview.html =
+		getReportWebview(
+			result,
+			preAnalysis
+		);
 
 		panel.webview.onDidReceiveMessage(async (message) => {
 			switch (message.command) {
