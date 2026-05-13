@@ -72,10 +72,18 @@ export function getReportWebview(
 
 		.badge.clickable {
 			cursor: pointer;
+
+			transition:
+				transform 0.08s ease,
+				filter 0.12s ease;
 		}
 
 		.badge.clickable:hover {
 			filter: brightness(1.18);
+		}
+
+		.badge.clickable:active {
+			transform: scale(0.96);
 		}
 
 		.badge.critical {
@@ -151,10 +159,19 @@ export function getReportWebview(
 			cursor: pointer;
 			color: #101010;
 			background: #19f5d0;
+
+			transition:
+				transform 0.08s ease,
+				filter 0.12s ease,
+				box-shadow 0.12s ease;
 		}
 
 		button:hover {
 			background: #52ffe0;
+		}
+
+		button:active {
+			transform: translateY(2px) scale(0.98);
 		}
 
 		.secondary-btn {
