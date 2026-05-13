@@ -7,7 +7,8 @@ import { runIverilogSimulation } from "./simulator/iverilogRunner";
 import { getReportWebview } from "./reportWebview";
 import {
 	generateOllamaTestbench,
-	TestbenchSettings
+	TestbenchSettings,
+	cleanGeneratedCode
 } from "./gentb";
 
 
@@ -237,15 +238,7 @@ export function activate(context: vscode.ExtensionContext) {
 							);
 						});
 
-						fullTestbench = fullTestbench
-							.replace(/^```(?:verilog|systemverilog|sv)?\s*/i, "")
-							.replace(/\s*```\s*$/i, "")
-							.trim();
-
-						fullTestbench = fullTestbench.replace(
-							/^timescale\b/i,
-							"`timescale"
-						);
+						fullTestbench = cleanGeneratedCode(fullTestbench);
 
 						panel.webview.postMessage({
 							command: "showFinalGeneratedTestbench",
