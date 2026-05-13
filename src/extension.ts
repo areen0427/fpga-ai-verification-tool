@@ -10,6 +10,7 @@ import {
 	TestbenchSettings,
 	cleanGeneratedCode
 } from "./gentb";
+import { runYosysSynthesis } from "./synthesisRunner";
 
 
 	type PreAnalysisResult = {
@@ -204,6 +205,18 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 
 		panel.webview.onDidReceiveMessage(async (message) => {
+
+			if (message.command === "generateHardware") {
+
+				const synthResult = await runYosysSynthesis(result.fileName);
+
+				panel.webview.postMessage({
+					command: "showSynthesisResult",
+					result: synthResult
+				});
+			}
+
+
 			switch (message.command) {
 
 				case "updateTestbenchSettings": {
@@ -325,6 +338,50 @@ export function activate(context: vscode.ExtensionContext) {
 					vscode.window.showInformationMessage(
 						"Testbench added to project."
 					);
+
+					break;
+				}
+
+				case "explainSynthesisFailure": {
+					const prompt = `
+				Explain this Yosys synthesis failure in simple FPGA beginner-friendly terms.
+
+				Focus on:
+				- What likely failed
+				- What file/code issue may have caused it
+				- What the user should check next
+
+				Errors:
+				${message.errors?.join("\n") || "No explicit errors"}
+
+				Full synthesis log:
+				${message.log}
+				`;
+
+					let explanation = "";
+
+					try {
+						await generateOllamaTestbench(
+							result.fileName,
+							{
+								...testbenchSettings,
+								customPrompt: prompt
+							},
+							async (chunk: string) => {
+								explanation += chunk;
+							}
+						);
+
+						explanation = cleanGeneratedCode(explanation);
+					} catch (error: any) {
+						explanation =
+							"AI explanation failed, but synthesis did fail. Check the Yosys log for syntax errors, unsupported Verilog, missing modules, or invalid file paths.";
+					}
+
+					panel.webview.postMessage({
+						command: "synthesisFailureExplanation",
+						explanation
+					});
 
 					break;
 				}

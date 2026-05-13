@@ -480,6 +480,56 @@ export function getReportWebview(
 					</button>
 				</div>
 			</div>
+
+			<div id="synthStatus" class="simulation-status"></div>
+
+			<div
+				id="synthDiagramContainer"
+				style="
+					margin-top: 12px;
+					background: #111111;
+					border: 1px solid #333333;
+					border-radius: 12px;
+					padding: 16px;
+					overflow: auto;
+					max-height: 700px;
+					display: none;
+				"
+			></div>
+
+			<div
+				id="synthAdvancedSection"
+				style="
+					margin-top: 14px;
+					display: none;
+				"
+			>
+				<pre
+					id="synthLog"
+					class="simulation-log"
+					style="
+						display: none;
+						min-height: calc(15 * 1.4em + 20px);
+						max-height: calc(15 * 1.4em + 20px);
+						overflow-y: auto;
+						overflow-x: hidden;
+						white-space: pre-wrap;
+						word-break: break-word;
+					"
+				></pre>
+			</div>
+
+			<button
+				id="toggleSynthLogsBtn"
+				class="secondary-btn"
+				style="
+					margin-top: 12px;
+					display: none;
+				"
+			>
+				Show Advanced Logs
+			</button>
+
 		</div>
 
 
@@ -494,6 +544,45 @@ export function getReportWebview(
 		let queuedChunks = "";
 		let ignoreIncoming = false;
 		let canAddGeneratedTbToProject = false;
+
+		const toggleSynthLogsBtn =
+			document.getElementById("toggleSynthLogsBtn");
+
+		const synthAdvancedSection =
+			document.getElementById("synthAdvancedSection");
+
+		let synthLogsVisible = false;
+
+		toggleSynthLogsBtn.addEventListener("click", () => {
+
+			const synthLog =
+				document.getElementById("synthLog");
+
+			synthLogsVisible = !synthLogsVisible;
+
+			if (synthLogsVisible) {
+
+				synthAdvancedSection.style.display =
+					"block";
+
+				synthLog.style.display =
+					"block";
+
+				toggleSynthLogsBtn.textContent =
+					"Hide Advanced Logs";
+
+			} else {
+
+				synthAdvancedSection.style.display =
+					"none";
+
+				synthLog.style.display =
+					"none";
+
+				toggleSynthLogsBtn.textContent =
+					"Show Advanced Logs";
+			}
+		});
 
 		const settingsBtn = document.getElementById("settingsBtn");
 		const settingsPanel = document.getElementById("settingsPanel");
@@ -742,6 +831,59 @@ export function getReportWebview(
 				return;
 			}
 
+			if (message.command === "showSynthesisResult") {
+				const result = message.result;
+
+				const btn = document.getElementById("runSynthesisBtn");
+				const status = document.getElementById("synthStatus");
+				const log = document.getElementById("synthLog");
+				const diagram = document.getElementById("synthDiagramContainer");
+
+				btn.disabled = false;
+				btn.textContent = "Generate";
+
+				log.textContent = result.log || "";
+				document.getElementById("toggleSynthLogsBtn")
+					.style.display = "inline-block";
+
+				synthAdvancedSection.style.display = "none";
+
+				log.style.display = "none";
+
+				synthLogsVisible = false;
+
+				toggleSynthLogsBtn.textContent =
+					"Show Advanced Logs";
+
+				if (result.passed) {
+					status.innerHTML =
+						"<span style='color:#4CAF50;'>Synthesis passed. Hardware diagram generated.</span>";
+
+					diagram.innerHTML = result.svgText || "<p>No diagram generated.</p>";
+					diagram.style.display = "block";
+				} else {
+					status.innerHTML =
+						"<span style='color:#ff5555;'>Synthesis failed.</span>";
+
+					diagram.style.display = "none";
+
+					vscode.postMessage({
+						command: "explainSynthesisFailure",
+						log: result.log || "",
+						errors: result.errors || []
+					});
+				}
+			}
+
+			if (message.command === "synthesisFailureExplanation") {
+				const status = document.getElementById("synthStatus");
+
+				status.innerHTML +=
+					"<div style='margin-top:10px; color:#eaeaea; line-height:1.5;'>" +
+					message.explanation +
+					"</div>";
+			}
+
 			if (message.command === "startGeneratedTestbench") {
 				generatedTB = "";
 				queuedChunks = "";
@@ -840,9 +982,34 @@ export function getReportWebview(
 		document
 		.getElementById("runSynthesisBtn")
 		.addEventListener("click", () => {
+			const btn = document.getElementById("runSynthesisBtn");
+			const status = document.getElementById("synthStatus");
+			const log = document.getElementById("synthLog");
+			const diagram = document.getElementById("synthDiagramContainer");
+
+			btn.disabled = true;
+			btn.textContent = "Running...";
+
+			status.innerHTML =
+				"<span style='color:#ffd84d;'>⏳ Running synthesis...</span>";
+
+			log.style.display = "none";
+			log.textContent = "";
+
+			diagram.style.display = "none";
+			diagram.innerHTML = "";
 
 			vscode.postMessage({
-				command: "runSynthesis"
+				command: "generateHardware"
+			});
+		});
+
+		document
+		.getElementById("runSynthesisBtn")
+		.addEventListener("click", () => {
+
+			vscode.postMessage({
+				command: "generateHardware"
 			});
 		});
 
