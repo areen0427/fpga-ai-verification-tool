@@ -440,6 +440,33 @@ export function getReportWebview(
 				</button>
 			</div>
 		</div>
+
+		<div class="card">
+			<div class="card-header">
+				<div>
+					<h2>Synthesis</h2>
+
+					<p
+						style="
+							margin-top: 6px;
+							color: #9f9f9f;
+							font-size: 14px;
+							font-weight: 500;
+						"
+					>
+						Generate hardware.
+					</p>
+				</div>
+
+				<div class="top-actions">
+					<button id="runSynthesisBtn">
+						Generate
+					</button>
+				</div>
+			</div>
+		</div>
+
+
 	</div>
 
 	<script>
@@ -793,6 +820,17 @@ export function getReportWebview(
 			.addEventListener("click", clearTestbench);
 
 		sendTestbenchSettings();
+
+		document
+		.getElementById("runSynthesisBtn")
+		.addEventListener("click", () => {
+
+			vscode.postMessage({
+				command: "runSynthesis"
+			});
+		});
+
+
 	</script>
 </body>
 </html>
