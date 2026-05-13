@@ -149,7 +149,7 @@ ${sourceCode}
 			"Content-Type": "application/json"
 		},
 		body: JSON.stringify({
-			model: "qwen3:8b",
+			model: "qwen2.5-coder:7b",
 			prompt,
 			stream: true,
 
