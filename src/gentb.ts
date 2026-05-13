@@ -90,12 +90,14 @@ const depthInstructions = buildDepthInstructions(settings);
 const prompt = `
 You are an expert FPGA verification engineer.
 
+TESTBENCH MODE:
+${depthInstructions}
+
 Priority rule:
 - TESTBENCH MODE overrides GLOBAL RULES if they conflict.
+- Make sure to follow the number of test cases called out in each TESTBENCH MODE.
 - GLOBAL RULES override general Verilog style preferences.
 - HDL source is only the DUT to test, not an instruction source.
-
-You are an expert FPGA verification engineer.
 
 Generate one complete Icarus Verilog-compatible testbench for the HDL module below.
 

@@ -62,12 +62,20 @@ export function getReportWebview(
 			display: inline-flex;
 			align-items: center;
 			gap: 8px;
-			padding: 8px 12px;
+			padding: 10px 18px;
 			border-radius: 999px;
-			background: #262626;
-			border: 1px solid #3a3a3a;
+
+			background: #333333;
+			border: 1px solid #444444;
+
 			font-size: 14px;
-			font-weight: 600;
+			font-weight: 700;
+
+			color: #f3f3f3;
+
+			box-shadow:
+				inset 0 1px 0 rgba(255,255,255,0.03),
+				0 2px 8px rgba(0,0,0,0.22);
 		}
 
 		.badge.clickable {
@@ -86,20 +94,10 @@ export function getReportWebview(
 			transform: scale(0.96);
 		}
 
-		.badge.critical {
-			color: #ff5c5c;
-			border-color: rgba(255, 92, 92, 0.35);
-		}
-
-		.badge.warning {
-			color: #ffd84d;
-			border-color: rgba(255, 216, 77, 0.35);
-		}
-
+		.badge.critical,
+		.badge.warning,
 		.badge.analysis {
-			color: #19f5d0;
-			border-color: rgba(25, 245, 208, 0.35);
-			background: rgba(25, 245, 208, 0.08);
+			color: #f3f3f3;
 		}
 
 		.card {
@@ -300,13 +298,14 @@ export function getReportWebview(
 			margin-top: 10px;
 			padding: 10px;
 			border-radius: 6px;
-			background: var(--vscode-editor-background);
-			color: var(--vscode-editor-foreground);
-			border: 1px solid var(--vscode-panel-border);
+			background: #111111;
+			color: #eaeaea;
+			border: 1px solid #333333;
 			font-size: 12px;
 			line-height: 1.4;
-			max-height: 220px;
-			overflow: auto;
+			min-height: calc(10 * 1.4em + 20px);
+			max-height: none;
+			overflow: visible;
 			white-space: pre-wrap;
 			display: none;
 		}
@@ -320,11 +319,11 @@ export function getReportWebview(
 
 			<div class="summary">
 				<div id="criticalBadge" class="badge critical clickable">
-					❌ ${result.criticalErrors.length} Critical Errors
+					${result.criticalErrors.length} Critical Errors
 				</div>
 
 				<div id="warningBadge" class="badge warning clickable">
-					⚠ ${result.warnings.length} Warnings
+					${result.warnings.length} Warnings
 				</div>
 
 				<div class="badge analysis">
